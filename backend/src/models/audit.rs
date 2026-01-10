@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
-    pub user_id: i32,
     pub username: String,
-    pub action: String,     // "LOGIN", "CREATE_DOC", "DELETE_DOC"
+    pub action: String,
+    #[sea_orm(column_type = "Text")] // ВАЖНО: Text вместо String (безлимитно)
     pub details: String,
     pub created_at: String,
 }

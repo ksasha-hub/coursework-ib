@@ -21,11 +21,10 @@ struct DocReq { title: String, content: String, username: String }
 #[derive(Deserialize)]
 struct CommentReq { doc_id: i32, text: String, username: String }
 
-// ИСПРАВЛЕННЫЙ АУДИТ (Обрезаем слишком длинные сообщения, чтобы не ломать БД)
 async fn log_audit(db: &DatabaseConnection, username: String, action: &str, details: &str) {
     let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    // Ограничиваем длину деталей до 200 символов, иначе PostgreSQL может ругаться
-    let safe_details = if details.len() > 200 { format!("{}...", &details[..200]) } else { details.to_string() };
+    // Обрезаем только если ОЧЕНЬ длинно (более 500 символов), чтобы не засорять базу
+    let safe_details = if details.len() > 500 { format!("{}...", &details[..500]) } else { details.to_string() };
     
     let log = audit::ActiveModel {
         username: Set(username),
@@ -34,7 +33,6 @@ async fn log_audit(db: &DatabaseConnection, username: String, action: &str, deta
         created_at: Set(now),
         ..Default::default()
     };
-    // Используем unwrap_or_default, чтобы ошибка аудита не валила сервер
     let _ = audit::Entity::insert(log).exec(db).await;
 }
 
@@ -51,7 +49,7 @@ async fn register(db: web::Data<DatabaseConnection>, req: web::Json<RegReq>) -> 
     };
     match user::Entity::insert(new_user).exec(db.get_ref()).await {
         Ok(_) => {
-            log_audit(db.get_ref(), req.username.clone(), "REGISTER", "New user").await;
+            log_audit(db.get_ref(), req.username.clone(), "REGISTER", "New user registered").await;
             HttpResponse::Ok().json("Registered")
         },
         Err(_) => HttpResponse::BadRequest().body("User exists")
@@ -62,7 +60,7 @@ async fn login(db: web::Data<DatabaseConnection>, req: web::Json<LoginReq>) -> i
     let u = user::Entity::find().filter(user::Column::Username.eq(&req.username)).one(db.get_ref()).await.unwrap();
     if let Some(user) = u {
         if user.password == req.password {
-            log_audit(db.get_ref(), user.username.clone(), "LOGIN", "Success").await;
+            log_audit(db.get_ref(), user.username.clone(), "LOGIN", "Login successful").await;
             return HttpResponse::Ok().json(serde_json::json!({"token": "jwt", "user": user}));
         }
     }
@@ -97,8 +95,14 @@ async fn get_docs(db: web::Data<DatabaseConnection>) -> impl Responder {
 async fn delete_doc(db: web::Data<DatabaseConnection>, path: web::Path<i32>) -> impl Responder {
     let id = path.into_inner();
     let _ = document::Entity::delete_by_id(id).exec(db.get_ref()).await;
-    // Audit log for delete is tricky without username, skip for simplicity or add middleware
     HttpResponse::Ok().json("Deleted")
+}
+
+// НОВОЕ: Удаление пользователя
+async fn delete_user(db: web::Data<DatabaseConnection>, path: web::Path<i32>) -> impl Responder {
+    let id = path.into_inner();
+    let _ = user::Entity::delete_by_id(id).exec(db.get_ref()).await;
+    HttpResponse::Ok().json("User deleted")
 }
 
 async fn add_comment(db: web::Data<DatabaseConnection>, req: web::Json<CommentReq>) -> impl Responder {
@@ -158,7 +162,8 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())
-            .app_data(web::JsonConfig::default().limit(10 * 1024 * 1024)).app_data(web::Data::new(db.clone()))
+            .app_data(web::JsonConfig::default().limit(20 * 1024 * 1024))
+            .app_data(web::Data::new(db.clone()))
             .route("/api/register", web::post().to(register))
             .route("/api/login", web::post().to(login))
             .route("/api/documents", web::post().to(create_doc))
@@ -167,6 +172,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/comments", web::post().to(add_comment))
             .route("/api/comments/{id}", web::get().to(get_comments))
             .route("/api/users", web::get().to(get_users))
+            .route("/api/users/{id}", web::delete().to(delete_user)) // NEW
             .route("/api/audit", web::get().to(get_audit))
             .route("/api/stats", web::get().to(get_stats))
     })
