@@ -20,7 +20,7 @@ struct LoginReq { username: String, password: String }
 struct DocReq { title: String, content: String, username: String }
 #[derive(Deserialize)]
 struct CommentReq { doc_id: i32, text: String, username: String }
-// НОВОЕ: Структура для обновления пользователя
+
 #[derive(Deserialize)]
 struct UpdateUserReq { full_name: String, username: String, role: String }
 
@@ -103,11 +103,9 @@ async fn delete_doc(db: web::Data<DatabaseConnection>, path: web::Path<i32>) -> 
 async fn delete_user(db: web::Data<DatabaseConnection>, path: web::Path<i32>) -> impl Responder {
     let id = path.into_inner();
     let _ = user::Entity::delete_by_id(id).exec(db.get_ref()).await;
-    // Log audit skipped here for simplicity, ideally pass admin username
     HttpResponse::Ok().json("User deleted")
 }
 
-// НОВОЕ: Обновление пользователя
 async fn update_user(db: web::Data<DatabaseConnection>, path: web::Path<i32>, req: web::Json<UpdateUserReq>) -> impl Responder {
     let id = path.into_inner();
     let user_opt = user::Entity::find_by_id(id).one(db.get_ref()).await.unwrap();
@@ -193,7 +191,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/comments/{id}", web::get().to(get_comments))
             .route("/api/users", web::get().to(get_users))
             .route("/api/users/{id}", web::delete().to(delete_user))
-            .route("/api/users/{id}", web::put().to(update_user)) // NEW
+            .route("/api/users/{id}", web::put().to(update_user)) 
             .route("/api/audit", web::get().to(get_audit))
             .route("/api/stats", web::get().to(get_stats))
     })

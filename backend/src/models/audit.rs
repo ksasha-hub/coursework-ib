@@ -8,7 +8,7 @@ pub struct Model {
     pub id: i32,
     pub username: String,
     pub action: String,
-    #[sea_orm(column_type = "Text")] // ВАЖНО: Text вместо String (безлимитно)
+    #[sea_orm(column_type = "Text")] 
     pub details: String,
     pub created_at: String,
 }

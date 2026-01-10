@@ -22,7 +22,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     ports: ["8080:8080"]
-    restart: always  # <--- ГЛАВНОЕ ИСПРАВЛЕНИЕ
+    restart: always  
     environment:
       DATABASE_URL: postgres://admin:password@db:5432/ib_db
       RUST_LOG: info

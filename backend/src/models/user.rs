@@ -10,7 +10,7 @@ pub struct Model {
     pub username: String,
     pub password: String,
     pub full_name: String,
-    pub role: String, // "admin" или "user"
+    pub role: String, // admin user
     pub created_at: String,
 }
 

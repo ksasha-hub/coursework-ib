@@ -6,7 +6,7 @@ import 'jspdf-autotable';
 
 const api = axios.create({ baseURL: `http://${window.location.hostname}:8080/api` });
 
-// --- UTILS ---
+// utils
 const Layout = ({ children }) => {
   const nav = useNavigate();
   const loc = useLocation();
@@ -29,7 +29,7 @@ const Layout = ({ children }) => {
             <div className={`nav-item ${loc.pathname === '/audit' ? 'active' : ''}`} onClick={()=>nav('/audit')}>👁️ Аудит</div>
           </>
         )}
-        {/* КНОПКА ВЫХОДА ПОДНЯТА ВЫШЕ */}
+        {}
         <div style={{marginTop:'20px'}}><button className="btn-danger" style={{width:'100%'}} onClick={logout}>Выход</button></div>
       </div>
       <div className="main-content">{children}</div>
@@ -37,7 +37,6 @@ const Layout = ({ children }) => {
   );
 };
 
-// ... (Dashboard, Profile, DocManagement, CreateDoc, Audit остались прежними)
 function Dashboard() {
   const [stats, setStats] = useState({users:0, docs:0, audits:0});
   const [recent, setRecent] = useState([]);
@@ -140,10 +139,10 @@ function Audit() {
   return ( <Layout><h1>Журнал Аудита</h1><div className="card"><table><thead><tr><th>Время</th><th>Кто</th><th>Действие</th><th>Детали</th></tr></thead><tbody>{logs.map(x=><tr key={x.id}><td>{x.created_at}</td><td>{x.username}</td><td><span className="badge bg-blue">{x.action}</span></td><td>{x.details}</td></tr>)}</tbody></table></div></Layout> );
 }
 
-// НОВЫЙ КОМПОНЕНТ АДМИНКИ С РЕДАКТИРОВАНИЕМ
+// админка для изменения
 function AdminUsers() {
   const [users, setUsers] = useState([]);
-  const [editing, setEditing] = useState(null); // Кого редактируем
+  const [editing, setEditing] = useState(null); // кого редактируем
   const currentUser = JSON.parse(localStorage.getItem('user'));
   
   useEffect(() => { load(); }, []);

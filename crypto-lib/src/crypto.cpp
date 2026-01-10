@@ -8,7 +8,7 @@
 
 const char KEY = 0x5A;
 
-// Превращаем байты в HEX-строку (A1B2...), чтобы Rust не ломал кодировку UTF-8
+// байты в хекс
 std::string to_hex(const std::vector<unsigned char>& data) {
     std::stringstream ss;
     ss << std::hex << std::setfill('0');
@@ -32,7 +32,7 @@ extern "C" {
         std::string s_input(input);
         std::vector<unsigned char> encrypted;
         
-        // Простое XOR шифрование байтов
+        // хор шифрование
         for (char c : s_input) {
             unsigned char uc = (unsigned char)c;
             encrypted.push_back((uc ^ KEY) + 1);
