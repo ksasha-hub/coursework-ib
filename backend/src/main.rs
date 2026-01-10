@@ -20,10 +20,12 @@ struct LoginReq { username: String, password: String }
 struct DocReq { title: String, content: String, username: String }
 #[derive(Deserialize)]
 struct CommentReq { doc_id: i32, text: String, username: String }
+// НОВОЕ: Структура для обновления пользователя
+#[derive(Deserialize)]
+struct UpdateUserReq { full_name: String, username: String, role: String }
 
 async fn log_audit(db: &DatabaseConnection, username: String, action: &str, details: &str) {
     let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    // Обрезаем только если ОЧЕНЬ длинно (более 500 символов), чтобы не засорять базу
     let safe_details = if details.len() > 500 { format!("{}...", &details[..500]) } else { details.to_string() };
     
     let log = audit::ActiveModel {
@@ -98,11 +100,29 @@ async fn delete_doc(db: web::Data<DatabaseConnection>, path: web::Path<i32>) -> 
     HttpResponse::Ok().json("Deleted")
 }
 
-// НОВОЕ: Удаление пользователя
 async fn delete_user(db: web::Data<DatabaseConnection>, path: web::Path<i32>) -> impl Responder {
     let id = path.into_inner();
     let _ = user::Entity::delete_by_id(id).exec(db.get_ref()).await;
+    // Log audit skipped here for simplicity, ideally pass admin username
     HttpResponse::Ok().json("User deleted")
+}
+
+// НОВОЕ: Обновление пользователя
+async fn update_user(db: web::Data<DatabaseConnection>, path: web::Path<i32>, req: web::Json<UpdateUserReq>) -> impl Responder {
+    let id = path.into_inner();
+    let user_opt = user::Entity::find_by_id(id).one(db.get_ref()).await.unwrap();
+    
+    if let Some(u) = user_opt {
+        let mut active: user::ActiveModel = u.into();
+        active.full_name = Set(req.full_name.clone());
+        active.username = Set(req.username.clone());
+        active.role = Set(req.role.clone());
+        
+        active.update(db.get_ref()).await.unwrap();
+        HttpResponse::Ok().json("Updated")
+    } else {
+        HttpResponse::NotFound().body("User not found")
+    }
 }
 
 async fn add_comment(db: web::Data<DatabaseConnection>, req: web::Json<CommentReq>) -> impl Responder {
@@ -172,7 +192,8 @@ async fn main() -> std::io::Result<()> {
             .route("/api/comments", web::post().to(add_comment))
             .route("/api/comments/{id}", web::get().to(get_comments))
             .route("/api/users", web::get().to(get_users))
-            .route("/api/users/{id}", web::delete().to(delete_user)) // NEW
+            .route("/api/users/{id}", web::delete().to(delete_user))
+            .route("/api/users/{id}", web::put().to(update_user)) // NEW
             .route("/api/audit", web::get().to(get_audit))
             .route("/api/stats", web::get().to(get_stats))
     })
