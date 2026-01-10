@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use models::{user, document, audit, comment};
 use utils::crypto_ffi;
 use std::env;
+use std::time::Duration;
+use tokio::time::sleep;
 use chrono::Local;
 
 #[derive(Deserialize)]
@@ -19,19 +21,20 @@ struct DocReq { title: String, content: String, username: String }
 #[derive(Deserialize)]
 struct CommentReq { doc_id: i32, text: String, username: String }
 
-// --- АУДИТ ФУНКЦИЯ ---
+// ИСПРАВЛЕННЫЙ АУДИТ (Обрезаем слишком длинные сообщения, чтобы не ломать БД)
 async fn log_audit(db: &DatabaseConnection, username: String, action: &str, details: &str) {
     let now = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-    let safe_details = if details.len() > 200 { &details[..200] } else { details }; // Обрезаем слишком длинные детали
+    // Ограничиваем длину деталей до 200 символов, иначе PostgreSQL может ругаться
+    let safe_details = if details.len() > 200 { format!("{}...", &details[..200]) } else { details.to_string() };
     
     let log = audit::ActiveModel {
         username: Set(username),
         action: Set(action.to_string()),
-        details: Set(safe_details.to_string()),
+        details: Set(safe_details),
         created_at: Set(now),
         ..Default::default()
     };
-    // Игнорируем ошибки аудита, чтобы не крашить основной запрос
+    // Используем unwrap_or_default, чтобы ошибка аудита не валила сервер
     let _ = audit::Entity::insert(log).exec(db).await;
 }
 
@@ -67,18 +70,15 @@ async fn login(db: web::Data<DatabaseConnection>, req: web::Json<LoginReq>) -> i
 }
 
 async fn create_doc(db: web::Data<DatabaseConnection>, req: web::Json<DocReq>) -> impl Responder {
-    // Шифруем
     let encrypted = crypto_ffi::encrypt(&req.content);
-    
     let doc = document::ActiveModel {
         title: Set(req.title.clone()),
-        content_encrypted: Set(encrypted), // Тут теперь будет HEX строка
+        content_encrypted: Set(encrypted),
         owner_name: Set(req.username.clone()),
         ..Default::default()
     };
-    
     let res = document::Entity::insert(doc).exec(db.get_ref()).await.unwrap();
-    log_audit(db.get_ref(), req.username.clone(), "CREATE_DOC", &format!("Title: {}", req.title)).await;
+    log_audit(db.get_ref(), req.username.clone(), "CREATE_DOC", &format!("ID: {}", res.last_insert_id)).await;
     HttpResponse::Ok().json("Created")
 }
 
@@ -86,7 +86,6 @@ async fn get_docs(db: web::Data<DatabaseConnection>) -> impl Responder {
     let docs = document::Entity::find().all(db.get_ref()).await.unwrap();
     let mut result = Vec::new();
     for d in docs {
-        // Расшифровываем HEX -> Текст
         let decrypted = crypto_ffi::decrypt(&d.content_encrypted);
         result.push(serde_json::json!({
             "id": d.id, "title": d.title, "content": decrypted, "author": d.owner_name
@@ -98,10 +97,10 @@ async fn get_docs(db: web::Data<DatabaseConnection>) -> impl Responder {
 async fn delete_doc(db: web::Data<DatabaseConnection>, path: web::Path<i32>) -> impl Responder {
     let id = path.into_inner();
     let _ = document::Entity::delete_by_id(id).exec(db.get_ref()).await;
+    // Audit log for delete is tricky without username, skip for simplicity or add middleware
     HttpResponse::Ok().json("Deleted")
 }
 
-// ... Остальные хендлеры (комментарии, юзеры) остаются как были ...
 async fn add_comment(db: web::Data<DatabaseConnection>, req: web::Json<CommentReq>) -> impl Responder {
     let now = Local::now().format("%Y-%m-%d %H:%M").to_string();
     let comment = comment::ActiveModel {
@@ -115,19 +114,23 @@ async fn add_comment(db: web::Data<DatabaseConnection>, req: web::Json<CommentRe
     log_audit(db.get_ref(), req.username.clone(), "COMMENT", &format!("Doc: {}", req.doc_id)).await;
     HttpResponse::Ok().json("Added")
 }
+
 async fn get_comments(db: web::Data<DatabaseConnection>, path: web::Path<i32>) -> impl Responder {
     let id = path.into_inner();
     let comments = comment::Entity::find().filter(comment::Column::DocId.eq(id)).all(db.get_ref()).await.unwrap();
     HttpResponse::Ok().json(comments)
 }
+
 async fn get_users(db: web::Data<DatabaseConnection>) -> impl Responder {
     let users = user::Entity::find().all(db.get_ref()).await.unwrap();
     HttpResponse::Ok().json(users)
 }
+
 async fn get_audit(db: web::Data<DatabaseConnection>) -> impl Responder {
-    let logs = audit::Entity::find().order_by_desc(audit::Column::Id).limit(50).all(db.get_ref()).await.unwrap();
+    let logs = audit::Entity::find().order_by_desc(audit::Column::Id).limit(100).all(db.get_ref()).await.unwrap();
     HttpResponse::Ok().json(logs)
 }
+
 async fn get_stats(db: web::Data<DatabaseConnection>) -> impl Responder {
     let u_c = user::Entity::find().count(db.get_ref()).await.unwrap();
     let d_c = document::Entity::find().count(db.get_ref()).await.unwrap();
@@ -138,7 +141,13 @@ async fn get_stats(db: web::Data<DatabaseConnection>) -> impl Responder {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let db_url = env::var("DATABASE_URL").expect("DB URL set");
-    let db = Database::connect(&db_url).await.unwrap();
+    let mut db: Option<DatabaseConnection> = None;
+    for i in 1..=10 {
+        if let Ok(conn) = Database::connect(&db_url).await { db = Some(conn); break; }
+        sleep(Duration::from_secs(3)).await;
+    }
+    let db = db.expect("DB Failed");
+
     let builder = db.get_database_backend();
     let schema = Schema::new(builder);
     let _ = db.execute(builder.build(&schema.create_table_from_entity(models::user::Entity))).await;
@@ -149,7 +158,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())
-            .app_data(web::Data::new(db.clone()))
+            .app_data(web::JsonConfig::default().limit(10 * 1024 * 1024)).app_data(web::Data::new(db.clone()))
             .route("/api/register", web::post().to(register))
             .route("/api/login", web::post().to(login))
             .route("/api/documents", web::post().to(create_doc))
