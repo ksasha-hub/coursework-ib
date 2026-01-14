@@ -16,7 +16,7 @@ use chrono::Local;
 struct RegReq { username: String, password: String, full_name: String }
 #[derive(Deserialize)]
 struct LoginReq { username: String, password: String }
-// НОВОЕ ПОЛЕ: created_at (Опционально)
+
 #[derive(Deserialize)]
 struct DocReq { title: String, category: String, content: String, username: String, created_at: Option<String> }
 #[derive(Deserialize)]
@@ -71,7 +71,6 @@ async fn login(db: web::Data<DatabaseConnection>, req: web::Json<LoginReq>) -> i
 async fn create_doc(db: web::Data<DatabaseConnection>, req: web::Json<DocReq>) -> impl Responder {
     let encrypted = crypto_ffi::encrypt(&req.content);
     
-    // Если дата пришла с фронта - берем её, иначе текущую
     let date = req.created_at.clone().unwrap_or_else(|| Local::now().format("%Y-%m-%d").to_string());
     
     let doc = document::ActiveModel {
