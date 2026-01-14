@@ -8,8 +8,6 @@ pub struct Model {
     pub id: i32,
     pub title: String,
     pub category: String,
-    
-    // НОВОЕ ПОЛЕ: Дата создания
     pub created_at: String,
     
     #[sea_orm(column_type = "Text")]
