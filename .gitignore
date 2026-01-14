@@ -1,15 +1,10 @@
-# Node modules (очень тяжелые)
 node_modules/
 frontend/node_modules/
 
-# Rust build (тяжелый)
 backend/target/
 
-# Database data (нельзя выкладывать)
 postgres_data/
 
-# Environment variables (пароли)
 .env
 
-# System files
 .DS_Store
