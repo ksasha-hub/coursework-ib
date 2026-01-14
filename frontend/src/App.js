@@ -6,7 +6,7 @@ import 'jspdf-autotable';
 
 const api = axios.create({ baseURL: `http://${window.location.hostname}:8080/api` });
 
-// --- UTILS ---
+// utils
 const Layout = ({ children }) => {
   const nav = useNavigate();
   const loc = useLocation();
@@ -40,7 +40,6 @@ const FilterBtn = ({ active, children, onClick }) => (
     <button onClick={onClick} style={{padding: '6px 14px', fontSize: '0.85rem', border: active ? '1px solid #7f1d1d' : '1px solid #cbd5e1', background: active ? '#7f1d1d' : 'white', color: active ? 'white' : '#64748b', borderRadius: '6px', cursor: 'pointer', fontWeight: active ? '600' : 'normal', transition: 'all 0.2s', boxShadow: active ? '0 2px 4px rgba(127, 29, 29, 0.2)' : 'none'}}>{children}</button>
 );
 
-// --- НОВЫЙ КРАСИВЫЙ ПРОФИЛЬ ---
 function Profile() {
   const user = JSON.parse(localStorage.getItem('user'));
   
@@ -102,7 +101,6 @@ function Profile() {
   );
 }
 
-// ... ОСТАЛЬНЫЕ КОМПОНЕНТЫ ОСТАВЛЯЕМ КАК БЫЛИ ...
 function Dashboard() { const [s, setS] = useState({users:0, docs:0, audits:0}); useEffect(() => { api.get('/stats').then(r => setS(r.data)); }, []); return <Layout><h1>Главная панель</h1><div className="stats-grid"><div className="stat-card"><div className="stat-val">{s.docs}</div><div className="stat-label">Документов</div></div><div className="stat-card"><div className="stat-val">{s.users}</div><div className="stat-label">Пользователей</div></div><div className="stat-card"><div className="stat-val">{s.audits}</div><div className="stat-label">Записей аудита</div></div></div><div className="card"><h3>Добро пожаловать в Систему</h3></div></Layout>; }
 function DocManagement() {
   const [docs, setDocs] = useState([]);
